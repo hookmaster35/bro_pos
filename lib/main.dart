@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const BroPOS());
 
@@ -15,6 +16,7 @@ class BroPOS extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'BroPOS',
       theme: ThemeData(
         primarySwatch: Colors.orange,
         useMaterial3: true,
@@ -174,6 +176,7 @@ class _MainNavigationState extends State<MainNavigation> {
         onMonthChanged: (newMonth) => setState(() => selectedMonth = newMonth),
       ),
       HistoryScreen(history: salesHistory, onMarkPaid: markUtangAsPaid),
+      const AboutDeveloperScreen(),
     ];
 
     return Scaffold(
@@ -194,6 +197,7 @@ class _MainNavigationState extends State<MainNavigation> {
             label: "Ledger",
           ),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: "Sales"),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Dev"),
         ],
       ),
     );
@@ -338,7 +342,7 @@ class _SalesScreenState extends State<SalesScreen> {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text("Manual Add"),
+        title: const Text("Quick Manual Add"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -347,7 +351,7 @@ class _SalesScreenState extends State<SalesScreen> {
               onChanged: (v) => name = v,
             ),
             TextField(
-              decoration: const InputDecoration(labelText: "Price"),
+              decoration: const InputDecoration(labelText: "Price per Item"),
               keyboardType: TextInputType.number,
               onChanged: (v) => price = double.tryParse(v) ?? 0,
             ),
@@ -946,6 +950,110 @@ class ReceiptDetailScreen extends StatelessWidget {
                 child: const Text("MARK AS PAID"),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- ABOUT DEVELOPER SCREEN ---
+class AboutDeveloperScreen extends StatelessWidget {
+  const AboutDeveloperScreen({super.key});
+
+  Future<void> _launchPortfolio() async {
+    final Uri url = Uri.parse(
+      'https://portfolio-pink-two-21.vercel.app/index.html',
+    );
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      throw Exception('Could not launch $url');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("The Developer"),
+        backgroundColor: Colors.orange,
+      ),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.orange,
+                  // Change to AssetImage('assets/logo.png') later if you add a photo
+                  child: Icon(Icons.person, size: 80, color: Colors.white),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "hookmaster35",
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const Text(
+                  "Independent Developer",
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  "Made as a pastime project and to help small local sari-sari stores.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+                const Divider(height: 40, thickness: 1),
+                const Text(
+                  "This POS was built to streamline inventory tracking, manage utang balances, and simplify daily accounting for our community business owners.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+                const SizedBox(height: 30),
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: InkWell(
+                    onTap: _launchPortfolio,
+                    borderRadius: BorderRadius.circular(15),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                        horizontal: 20,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.language, color: Colors.blue),
+                          SizedBox(width: 10),
+                          Text(
+                            "View My Portfolio",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                const Text(
+                  "App Version 1.0.0",
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
