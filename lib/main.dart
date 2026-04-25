@@ -96,13 +96,19 @@ class _MainNavigationState extends State<MainNavigation> {
     saveData();
   }
 
-  void addLedgerEntry(String ref, double credit, double debit) {
+  void addLedgerEntry(
+    String ref,
+    double credit,
+    double debit, {
+    bool isMemo = false,
+  }) {
     setState(() {
       ledgerEntries.insert(0, {
         'day': DateTime.now().day.toString(),
         'ref': ref,
         'credit': credit,
         'debit': debit,
+        'isMemo': isMemo,
         'month': DateFormat('MMMM').format(DateTime.now()),
         'date': DateTime.now().toString().substring(0, 10),
       });
@@ -119,13 +125,16 @@ class _MainNavigationState extends State<MainNavigation> {
     setState(() {
       for (var item in cart) {
         int index = allProducts.indexWhere((p) => p['name'] == item['name']);
-        if (index != -1) allProducts[index]['stock'] -= 1;
+        if (index != -1) {
+          int qtySold = item['qty'] ?? 1;
+          allProducts[index]['stock'] -= qtySold;
+        }
       }
       salesHistory.insert(0, {
         'customer': customer,
         'total': total,
         'type': type,
-        'paid': type == "CASH", // CASH = already paid, UTANG = unpaid
+        'paid': type == "CASH",
         'date': DateTime.now().toString().substring(0, 16),
         'items': List.from(cart),
       });
@@ -133,19 +142,17 @@ class _MainNavigationState extends State<MainNavigation> {
       if (type == "CASH") {
         addLedgerEntry("[CASH] $customer", total, 0);
       } else if (type == "UTANG") {
-        addLedgerEntry("[UTANG] $customer", total, 0);
+        addLedgerEntry("[UTANG] $customer", 0, 0, isMemo: true);
       }
     });
     saveData();
   }
 
-  // Called from HistoryScreen when utang is marked paid
   void markUtangAsPaid(int saleIndex) {
     final sale = salesHistory[saleIndex];
     setState(() {
       salesHistory[saleIndex]['paid'] = true;
     });
-    // Add a balancing CASH-IN entry to the ledger
     addLedgerEntry(
       "[PAID] ${sale['customer']}",
       (sale['total'] as num).toDouble(),
@@ -245,7 +252,10 @@ class _SalesScreenState extends State<SalesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    double total = cartItems.fold(0, (sum, item) => sum + item['price']);
+    double total = cartItems.fold(
+      0,
+      (sum, item) => sum + (item['price'] * item['qty']),
+    );
     return Scaffold(
       appBar: AppBar(
         title: const Text("Sari-Sari POS"),
@@ -283,8 +293,13 @@ class _SalesScreenState extends State<SalesScreen> {
                   child: ListView.builder(
                     itemCount: cartItems.length,
                     itemBuilder: (c, i) => ListTile(
-                      title: Text(cartItems[i]['name']),
-                      trailing: Text("₱${cartItems[i]['price']}"),
+                      title: Text(
+                        "${cartItems[i]['name']} x${cartItems[i]['qty']}",
+                      ),
+                      trailing: Text(
+                        "₱${(cartItems[i]['price'] * cartItems[i]['qty']).toStringAsFixed(2)}",
+                      ),
+                      onLongPress: () => setState(() => cartItems.removeAt(i)),
                     ),
                   ),
                 ),
@@ -294,7 +309,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        "Total: ₱$total",
+                        "Total: ₱${total.toStringAsFixed(2)}",
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -319,15 +334,16 @@ class _SalesScreenState extends State<SalesScreen> {
   void _showManualAdd(BuildContext context) {
     String name = "";
     double price = 0;
+    int qty = 1;
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text("Quick Add"),
+        title: const Text("Manual Add"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              decoration: const InputDecoration(labelText: "Item"),
+              decoration: const InputDecoration(labelText: "Item Name"),
               onChanged: (v) => name = v,
             ),
             TextField(
@@ -335,15 +351,25 @@ class _SalesScreenState extends State<SalesScreen> {
               keyboardType: TextInputType.number,
               onChanged: (v) => price = double.tryParse(v) ?? 0,
             ),
+            TextField(
+              decoration: const InputDecoration(labelText: "Quantity"),
+              keyboardType: TextInputType.number,
+              onChanged: (v) => qty = int.tryParse(v) ?? 1,
+            ),
           ],
         ),
         actions: [
           ElevatedButton(
             onPressed: () {
-              setState(() => cartItems.add({'name': name, 'price': price}));
-              Navigator.pop(c);
+              if (name.isNotEmpty) {
+                setState(
+                  () =>
+                      cartItems.add({'name': name, 'price': price, 'qty': qty}),
+                );
+                Navigator.pop(c);
+              }
             },
-            child: const Text("ADD"),
+            child: const Text("ADD TO CART"),
           ),
         ],
       ),
@@ -352,7 +378,10 @@ class _SalesScreenState extends State<SalesScreen> {
 
   void _showCheckout(BuildContext context) {
     String cust = "Walk-in";
-    double total = cartItems.fold(0, (sum, item) => sum + item['price']);
+    double total = cartItems.fold(
+      0,
+      (sum, item) => sum + (item['price'] * item['qty']),
+    );
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
@@ -492,7 +521,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 // --- ACCOUNTING SCREEN ---
 class AccountingScreen extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
-  final Function(String, double, double) onAdd;
+  final Function(String, double, double, {bool isMemo}) onAdd;
   final String selectedMonth;
   final List<String> monthList;
   final Function(String) onMonthChanged;
@@ -538,23 +567,30 @@ class AccountingScreen extends StatelessWidget {
               ],
             ),
             pw.Divider(),
-            ...filtered.asMap().entries.map(
-              (entry) => pw.Row(
+            ...filtered.asMap().entries.map((entry) {
+              final e = entry.value;
+              final isMemo = e['isMemo'] == true;
+              return pw.Row(
                 children: [
-                  pw.Expanded(flex: 1, child: pw.Text(entry.value['day'])),
-                  pw.Expanded(flex: 3, child: pw.Text(entry.value['ref'])),
+                  pw.Expanded(flex: 1, child: pw.Text(e['day'])),
+                  pw.Expanded(flex: 3, child: pw.Text(e['ref'])),
                   pw.Expanded(
                     flex: 2,
-                    child: pw.Text("P${entry.value['credit']}"),
+                    child: pw.Text(
+                      isMemo ? "(${e['credit']})" : "P${e['credit']}",
+                    ),
                   ),
                   pw.Expanded(
                     flex: 2,
-                    child: pw.Text("P${entry.value['debit']}"),
+                    child: pw.Text(isMemo ? "-" : "P${e['debit']}"),
                   ),
-                  pw.Expanded(flex: 2, child: pw.Text("P${getBal(entry.key)}")),
+                  pw.Expanded(
+                    flex: 2,
+                    child: pw.Text(isMemo ? "-" : "P${getBal(entry.key)}"),
+                  ),
                 ],
-              ),
-            ),
+              );
+            }),
           ],
         ),
       ),
@@ -567,8 +603,10 @@ class AccountingScreen extends StatelessWidget {
     final filtered = entries.where((e) => e['month'] == selectedMonth).toList();
     double getBal(int i) {
       double b = 0;
-      for (int j = filtered.length - 1; j >= i; j--)
-        b += (filtered[j]['credit'] ?? 0) - (filtered[j]['debit'] ?? 0);
+      for (int j = filtered.length - 1; j >= i; j--) {
+        if (filtered[j]['isMemo'] != true)
+          b += (filtered[j]['credit'] ?? 0) - (filtered[j]['debit'] ?? 0);
+      }
       return b;
     }
 
@@ -612,41 +650,65 @@ class AccountingScreen extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               itemCount: filtered.length,
-              itemBuilder: (c, i) => ListTile(
-                title: Row(
-                  children: [
-                    Expanded(flex: 1, child: Text(filtered[i]['day'])),
-                    Expanded(
-                      flex: 3,
-                      child: Text(
-                        filtered[i]['ref'],
-                        style: const TextStyle(fontSize: 12),
+              itemBuilder: (c, i) {
+                final entry = filtered[i];
+                final isMemo = entry['isMemo'] == true;
+                return ListTile(
+                  tileColor: isMemo ? Colors.orange.shade50 : null,
+                  title: Row(
+                    children: [
+                      Expanded(flex: 1, child: Text(entry['day'])),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          entry['ref'],
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontStyle: isMemo
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                            color: isMemo ? Colors.orange.shade800 : null,
+                          ),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        "₱${filtered[i]['credit']}",
-                        style: const TextStyle(color: Colors.green),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          isMemo
+                              ? "(₱${entry['credit']})"
+                              : "₱${entry['credit']}",
+                          style: TextStyle(
+                            color: isMemo
+                                ? Colors.orange.shade700
+                                : Colors.green,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        "₱${filtered[i]['debit']}",
-                        style: const TextStyle(color: Colors.red),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          isMemo ? "-" : "₱${entry['debit']}",
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        "₱${getBal(i)}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          isMemo ? "-" : "₱${getBal(i)}",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -732,7 +794,6 @@ class AccountingScreen extends StatelessWidget {
 class HistoryScreen extends StatelessWidget {
   final List<Map<String, dynamic>> history;
   final Function(int) onMarkPaid;
-
   const HistoryScreen({
     super.key,
     required this.history,
@@ -749,9 +810,7 @@ class HistoryScreen extends StatelessWidget {
       itemCount: history.length,
       itemBuilder: (c, i) {
         final sale = history[i];
-        final isUtang = sale['type'] == "UTANG";
         final isPaid = sale['paid'] == true;
-
         return ListTile(
           onTap: () => Navigator.push(
             c,
@@ -763,69 +822,22 @@ class HistoryScreen extends StatelessWidget {
               ),
             ),
           ),
-          leading: isUtang
-              ? Icon(
-                  isPaid ? Icons.check_circle : Icons.warning_rounded,
-                  color: isPaid ? Colors.green : Colors.red,
-                )
-              : const Icon(Icons.check_circle, color: Colors.green),
-          title: Text("${sale['customer']} - ₱${sale['total']}"),
-          subtitle: Text(
-            "${sale['date']}  •  ${isUtang ? (isPaid ? 'UTANG (Paid)' : 'UTANG (Unpaid)') : 'CASH'}",
+          leading: Icon(
+            isPaid ? Icons.check_circle : Icons.warning_rounded,
+            color: isPaid ? Colors.green : Colors.red,
           ),
-          trailing: isUtang && !isPaid
+          title: Text("${sale['customer']} - ₱${sale['total']}"),
+          subtitle: Text("${sale['date']} • ${sale['type']}"),
+          trailing: sale['type'] == "UTANG" && !isPaid
               ? TextButton(
-                  onPressed: () => _confirmMarkPaid(c, i, sale),
-                  style: TextButton.styleFrom(foregroundColor: Colors.green),
-                  child: const Text(
-                    "MARK PAID",
-                    style: TextStyle(fontSize: 11),
-                  ),
+                  onPressed: () => onMarkPaid(i),
+                  child: const Text("PAID?"),
                 )
               : const Icon(Icons.arrow_forward_ios),
         );
       },
     ),
   );
-
-  void _confirmMarkPaid(
-    BuildContext context,
-    int index,
-    Map<String, dynamic> sale,
-  ) {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Mark as Paid"),
-        content: Text(
-          "Mark ₱${sale['total']} from ${sale['customer']} as paid?\n\nThis will log a [PAID] entry in the ledger.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text("CANCEL"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              onMarkPaid(index);
-              Navigator.pop(c);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Marked as paid & logged to ledger!"),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            child: const Text("CONFIRM"),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // --- RECEIPT DETAIL ---
@@ -833,7 +845,6 @@ class ReceiptDetailScreen extends StatelessWidget {
   final Map<String, dynamic> sale;
   final int saleIndex;
   final Function(int) onMarkPaid;
-
   const ReceiptDetailScreen({
     super.key,
     required this.sale,
@@ -853,13 +864,16 @@ class ReceiptDetailScreen extends StatelessWidget {
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             ),
             pw.Divider(),
-            pw.Text("Date: ${sale['date']}"),
             pw.Text("Customer: ${sale['customer']}"),
+            pw.Text("Date: ${sale['date']}"),
             pw.Divider(),
             ...List.from(sale['items']).map(
               (it) => pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [pw.Text(it['name']), pw.Text("P${it['price']}")],
+                children: [
+                  pw.Text("${it['name']} x${it['qty']}"),
+                  pw.Text("P${(it['price'] * it['qty'])}"),
+                ],
               ),
             ),
             pw.Divider(),
@@ -876,19 +890,12 @@ class ReceiptDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isUtang = sale['type'] == "UTANG";
     final isPaid = sale['paid'] == true;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Receipt"),
         backgroundColor: Colors.orange,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.print, size: 28),
-            onPressed: _print,
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.print), onPressed: _print)],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -904,43 +911,24 @@ class ReceiptDetailScreen extends StatelessWidget {
             const Divider(),
             Text("Customer: ${sale['customer']}"),
             Text("Date: ${sale['date']}"),
-            Row(
-              children: [
-                const Text("Payment: "),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isUtang
-                        ? (isPaid ? Colors.green.shade100 : Colors.red.shade100)
-                        : Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    isUtang
-                        ? (isPaid ? "UTANG (Paid)" : "UTANG (Unpaid)")
-                        : "CASH",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isUtang
-                          ? (isPaid
-                                ? Colors.green.shade800
-                                : Colors.red.shade800)
-                          : Colors.green.shade800,
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              "Status: ${isPaid ? 'PAID' : 'UNPAID'}",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: isPaid ? Colors.green : Colors.red,
+              ),
             ),
             const Divider(),
             Expanded(
               child: ListView.builder(
                 itemCount: (sale['items'] as List).length,
                 itemBuilder: (c, i) => ListTile(
-                  title: Text(sale['items'][i]['name']),
-                  trailing: Text("₱${sale['items'][i]['price']}"),
+                  title: Text(
+                    "${sale['items'][i]['name']} x${sale['items'][i]['qty']}",
+                  ),
+                  trailing: Text(
+                    "₱${(sale['items'][i]['price'] * sale['items'][i]['qty']).toStringAsFixed(2)}",
+                  ),
                 ),
               ),
             ),
@@ -949,62 +937,14 @@ class ReceiptDetailScreen extends StatelessWidget {
               "TOTAL: ₱${sale['total']}",
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            // Mark as Paid button shown only for unpaid utang
-            if (isUtang && !isPaid) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text(
-                    "MARK AS PAID",
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: const Text("Mark as Paid"),
-                        content: Text(
-                          "Mark ₱${sale['total']} from ${sale['customer']} as paid?\n\nThis will log a [PAID] entry in the ledger.",
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(c),
-                            child: const Text("CANCEL"),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () {
-                              onMarkPaid(saleIndex);
-                              Navigator.pop(c); // close dialog
-                              Navigator.pop(context); // go back to history
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Marked as paid & logged to ledger!",
-                                  ),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            },
-                            child: const Text("CONFIRM"),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+            if (!isPaid)
+              ElevatedButton(
+                onPressed: () {
+                  onMarkPaid(saleIndex);
+                  Navigator.pop(context);
+                },
+                child: const Text("MARK AS PAID"),
               ),
-            ],
           ],
         ),
       ),
