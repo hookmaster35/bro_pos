@@ -12,23 +12,142 @@ void main() => runApp(const BroPOS());
 
 class BroPOS extends StatelessWidget {
   const BroPOS({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'BroPOS',
+      title: 'HandyPOS',
       theme: ThemeData(
         primarySwatch: Colors.orange,
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
       ),
-      home: const MainNavigation(),
+      home: const SplashScreen(),
     );
   }
 }
 
+// --- FIXED SPLASH SCREEN ---
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    _controller.forward();
+
+    // Preload image to avoid blank space
+    _precacheLogo();
+
+    // Navigate after splash
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const MainNavigation(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+            transitionDuration: const Duration(milliseconds: 500),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _precacheLogo() async {
+    try {
+      await precacheImage(const AssetImage('assets/logo.png'), context);
+    } catch (e) {
+      debugPrint("Logo preload failed: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo with fallback
+                Image.asset(
+                  'assets/logo.png',
+                  width: 150,
+                  height: 150,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 150,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.storefront,
+                        size: 80,
+                        color: Colors.orange,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  "Welcome to HandyPOS!",
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "By hookmaster35",
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- MAIN NAVIGATION ---
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
+
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
@@ -38,8 +157,8 @@ class _MainNavigationState extends State<MainNavigation> {
   List<Map<String, dynamic>> allProducts = [];
   List<Map<String, dynamic>> salesHistory = [];
   List<Map<String, dynamic>> ledgerEntries = [];
-
   String selectedMonth = DateFormat('MMMM').format(DateTime.now());
+
   final List<String> months = [
     "January",
     "February",
@@ -140,7 +259,6 @@ class _MainNavigationState extends State<MainNavigation> {
         'date': DateTime.now().toString().substring(0, 16),
         'items': List.from(cart),
       });
-
       if (type == "CASH") {
         addLedgerEntry("[CASH] $customer", total, 0);
       } else if (type == "UTANG") {
@@ -208,11 +326,13 @@ class _MainNavigationState extends State<MainNavigation> {
 class SalesScreen extends StatefulWidget {
   final List<Map<String, dynamic>> inventory;
   final Function(List<Map<String, dynamic>>, double, String, String) onCheckout;
+
   const SalesScreen({
     super.key,
     required this.inventory,
     required this.onCheckout,
   });
+
   @override
   State<SalesScreen> createState() => _SalesScreenState();
 }
@@ -228,14 +348,14 @@ class _SalesScreenState extends State<SalesScreen> {
       (p) => p['barcode'] == code,
       orElse: () => {},
     );
-    if (product.isNotEmpty && product['stock'] > 0) {
-      setState(
-        () => cartItems.add({
+    if (product.isNotEmpty && (product['stock'] as num) > 0) {
+      setState(() {
+        cartItems.add({
           'name': product['name'],
           'price': product['price'],
           'qty': 1,
-        }),
-      );
+        });
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -260,9 +380,10 @@ class _SalesScreenState extends State<SalesScreen> {
       0,
       (sum, item) => sum + (item['price'] * item['qty']),
     );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Sari-Sari POS"),
+        title: const Text("HandyPOS Scanner"),
         backgroundColor: Colors.orange,
       ),
       body: Column(
@@ -272,8 +393,9 @@ class _SalesScreenState extends State<SalesScreen> {
             child: MobileScanner(
               controller: controller,
               onDetect: (cap) {
-                for (var b in cap.barcodes)
+                for (var b in cap.barcodes) {
                   if (b.rawValue != null) handleBarcode(b.rawValue!);
+                }
               },
             ),
           ),
@@ -339,6 +461,7 @@ class _SalesScreenState extends State<SalesScreen> {
     String name = "";
     double price = 0;
     int qty = 1;
+
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
@@ -351,7 +474,7 @@ class _SalesScreenState extends State<SalesScreen> {
               onChanged: (v) => name = v,
             ),
             TextField(
-              decoration: const InputDecoration(labelText: "Price per Item"),
+              decoration: const InputDecoration(labelText: "Price"),
               keyboardType: TextInputType.number,
               onChanged: (v) => price = double.tryParse(v) ?? 0,
             ),
@@ -386,6 +509,7 @@ class _SalesScreenState extends State<SalesScreen> {
       0,
       (sum, item) => sum + (item['price'] * item['qty']),
     );
+
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
@@ -421,11 +545,13 @@ class _SalesScreenState extends State<SalesScreen> {
 class InventoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> products;
   final Function(Map<String, dynamic>) onAdd;
+
   const InventoryScreen({
     super.key,
     required this.products,
     required this.onAdd,
   });
+
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
@@ -438,6 +564,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     double price = 0;
     int stock = 0;
     String barcode = "";
+
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -605,11 +732,13 @@ class AccountingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filtered = entries.where((e) => e['month'] == selectedMonth).toList();
+
     double getBal(int i) {
       double b = 0;
       for (int j = filtered.length - 1; j >= i; j--) {
-        if (filtered[j]['isMemo'] != true)
+        if (filtered[j]['isMemo'] != true) {
           b += (filtered[j]['credit'] ?? 0) - (filtered[j]['debit'] ?? 0);
+        }
       }
       return b;
     }
@@ -748,6 +877,7 @@ class AccountingScreen extends StatelessWidget {
     String ref = "";
     double amt = 0;
     String mode = "DEBIT";
+
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -798,6 +928,7 @@ class AccountingScreen extends StatelessWidget {
 class HistoryScreen extends StatelessWidget {
   final List<Map<String, dynamic>> history;
   final Function(int) onMarkPaid;
+
   const HistoryScreen({
     super.key,
     required this.history,
@@ -849,6 +980,7 @@ class ReceiptDetailScreen extends StatelessWidget {
   final Map<String, dynamic> sale;
   final int saleIndex;
   final Function(int) onMarkPaid;
+
   const ReceiptDetailScreen({
     super.key,
     required this.sale,
@@ -895,6 +1027,7 @@ class ReceiptDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPaid = sale['paid'] == true;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Receipt"),
@@ -983,7 +1116,6 @@ class AboutDeveloperScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // PROFILE PHOTO BORDER
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(
@@ -993,7 +1125,6 @@ class AboutDeveloperScreen extends StatelessWidget {
                   child: const CircleAvatar(
                     radius: 70,
                     backgroundColor: Colors.white,
-                    // INSTRUCTIONS: Add your image to 'assets/profile.jpg' and register in pubspec.yaml
                     backgroundImage: AssetImage('assets/hookmaster35.png'),
                   ),
                 ),
