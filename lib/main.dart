@@ -983,11 +983,19 @@ class AboutDeveloperScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const CircleAvatar(
-                  radius: 60,
-                  backgroundColor: Colors.orange,
-                  // Change to AssetImage('assets/logo.png') later if you add a photo
-                  child: Icon(Icons.person, size: 80, color: Colors.white),
+                // PROFILE PHOTO BORDER
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const CircleAvatar(
+                    radius: 70,
+                    backgroundColor: Colors.white,
+                    // INSTRUCTIONS: Add your image to 'assets/profile.jpg' and register in pubspec.yaml
+                    backgroundImage: AssetImage('assets/hookmaster35.png'),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Text(
