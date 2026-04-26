@@ -28,7 +28,7 @@ class BroPOS extends StatelessWidget {
   }
 }
 
-// --- FIXED SPLASH SCREEN ---
+// --- ENHANCED SPLASH SCREEN ---
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -45,18 +45,16 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
+    // Fade-in animation for the logo/text
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 600),
     );
     _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
 
-    // Preload image to avoid blank space
-    _precacheLogo();
-
-    // Navigate after splash
-    Future.delayed(const Duration(seconds: 2), () {
+    // Navigate after 1 second total
+    Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -65,21 +63,14 @@ class _SplashScreenState extends State<SplashScreen>
                 const MainNavigation(),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
+                  // Smooth fade transition between screens
                   return FadeTransition(opacity: animation, child: child);
                 },
-            transitionDuration: const Duration(milliseconds: 500),
+            transitionDuration: const Duration(milliseconds: 400),
           ),
         );
       }
     });
-  }
-
-  Future<void> _precacheLogo() async {
-    try {
-      await precacheImage(const AssetImage('assets/logo.png'), context);
-    } catch (e) {
-      debugPrint("Logo preload failed: $e");
-    }
   }
 
   @override
@@ -95,48 +86,35 @@ class _SplashScreenState extends State<SplashScreen>
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo with fallback
-                Image.asset(
-                  'assets/logo.png',
-                  width: 150,
-                  height: 150,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 150,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.storefront,
-                        size: 80,
-                        color: Colors.orange,
-                      ),
-                    );
-                  },
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/logo.png',
+                width: 150,
+                height: 150,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.storefront,
+                  size: 80,
+                  color: Colors.orange,
                 ),
-                const SizedBox(height: 32),
-                const Text(
-                  "Welcome to HandyPOS!",
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange,
-                  ),
-                  textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                "Welcome to HandyPOS!",
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  "By hookmaster35",
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "By hookmaster35",
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
           ),
         ),
       ),
