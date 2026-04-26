@@ -19,16 +19,35 @@ class BroPOS extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'HandyPOS',
       theme: ThemeData(
-        primarySwatch: Colors.orange,
+        primarySwatch: Colors.green,
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.orange),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+          brightness: Brightness.light,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 3,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: Colors.green,
+        ),
       ),
       home: const SplashScreen(),
     );
   }
 }
 
-// --- SPLASH SCREEN WITH STAGGERED FADE EFFECT ---
+// --- SPLASH SCREEN ---
+// FIX #6: precacheImage moved to didChangeDependencies so context is fully ready
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -42,6 +61,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _logoFade;
   late Animation<double> _titleFade;
   late Animation<double> _subtitleFade;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -75,19 +95,17 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    _precacheLogo();
-
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
+      if (mounted && !_navigated) {
+        _navigated = true;
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
                 const MainNavigation(),
             transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
+                (context, animation, secondaryAnimation, child) =>
+                    FadeTransition(opacity: animation, child: child),
             transitionDuration: const Duration(milliseconds: 600),
           ),
         );
@@ -95,12 +113,14 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  Future<void> _precacheLogo() async {
-    try {
-      await precacheImage(const AssetImage('assets/logo.png'), context);
-    } catch (e) {
-      debugPrint("Logo preload failed: $e");
-    }
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // FIX #6: safe to call precacheImage here, context is fully mounted
+    precacheImage(
+      const AssetImage('assets/logo.png'),
+      context,
+    ).catchError((e) => debugPrint("Logo preload failed: $e"));
   }
 
   @override
@@ -124,21 +144,11 @@ class _SplashScreenState extends State<SplashScreen>
                   'assets/logo.png',
                   width: 160,
                   height: 160,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 160,
-                      height: 160,
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.storefront,
-                        size: 90,
-                        color: Colors.orange,
-                      ),
-                    );
-                  },
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.storefront,
+                    size: 120,
+                    color: Colors.green,
+                  ),
                 ),
               ),
               const SizedBox(height: 40),
@@ -149,7 +159,7 @@ class _SplashScreenState extends State<SplashScreen>
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange,
+                    color: Colors.green,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -159,11 +169,7 @@ class _SplashScreenState extends State<SplashScreen>
                 opacity: _subtitleFade,
                 child: const Text(
                   "By hookmaster35",
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
               ),
             ],
@@ -260,6 +266,7 @@ class _MainNavigationState extends State<MainNavigation> {
       if (index != -1) {
         allProducts[index]['stock'] += newProduct['stock'];
         allProducts[index]['price'] = newProduct['price'];
+        allProducts[index]['category'] = newProduct['category'];
       } else {
         allProducts.add(newProduct);
       }
@@ -297,8 +304,8 @@ class _MainNavigationState extends State<MainNavigation> {
       for (var item in cart) {
         int index = allProducts.indexWhere((p) => p['name'] == item['name']);
         if (index != -1) {
-          int qtySold = item['qty'] ?? 1;
-          allProducts[index]['stock'] -= qtySold;
+          allProducts[index]['stock'] =
+              (allProducts[index]['stock'] as int) - (item['qty'] as int);
         }
       }
       salesHistory.insert(0, {
@@ -309,10 +316,13 @@ class _MainNavigationState extends State<MainNavigation> {
         'date': DateTime.now().toString().substring(0, 16),
         'items': List.from(cart),
       });
+
       if (type == "CASH") {
         addLedgerEntry("[CASH] $customer", total, 0);
       } else if (type == "UTANG") {
-        addLedgerEntry("[UTANG] $customer", 0, 0, isMemo: true);
+        // FIX #2: store real amount in credit so the memo row shows it,
+        // but isMemo=true means it's excluded from balance calculation
+        addLedgerEntry("[UTANG] $customer", total, 0, isMemo: true);
       }
     });
     saveData();
@@ -356,12 +366,13 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.orange,
+        selectedItemColor: Colors.green,
+        unselectedItemColor: Colors.grey,
         onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.qr_code_scanner),
-            label: "Scanner",
+            label: "Scan",
           ),
           BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "Stock"),
           BottomNavigationBarItem(
@@ -376,7 +387,7 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- SALES SCREEN WITH DAILY SUMMARY ---
+// --- SALES SCREEN ---
 class SalesScreen extends StatefulWidget {
   final List<Map<String, dynamic>> inventory;
   final Function(List<Map<String, dynamic>>, double, String, String) onCheckout;
@@ -406,20 +417,22 @@ class _SalesScreenState extends State<SalesScreen> {
     );
     if (product.isNotEmpty && (product['stock'] as num) > 0) {
       setState(() {
-        cartItems.add({
-          'name': product['name'],
-          'price': product['price'],
-          'qty': 1,
-        });
+        final existing = cartItems.indexWhere(
+          (item) => item['name'] == product['name'],
+        );
+        if (existing != -1) {
+          cartItems[existing]['qty'] = (cartItems[existing]['qty'] as int) + 1;
+        } else {
+          cartItems.add({
+            'name': product['name'],
+            'price': product['price'],
+            'qty': 1,
+          });
+        }
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            product.isEmpty ? "Item not in Stock!" : "Out of Stock!",
-          ),
-          duration: const Duration(milliseconds: 500),
-        ),
+        const SnackBar(content: Text("Item not found or out of stock!")),
       );
     }
   }
@@ -434,40 +447,38 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget build(BuildContext context) {
     double total = cartItems.fold(
       0,
-      (sum, item) => sum + (item['price'] * item['qty']),
+      (sum, item) => sum + (item['price'] as num) * (item['qty'] as int),
     );
     final summary = widget.todaySummary;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("HandyPOS Scanner"),
-        backgroundColor: Colors.orange,
-      ),
+      appBar: AppBar(title: const Text("HandyPOS Scanner")),
       body: Column(
         children: [
-          // Daily Summary
-          Container(
-            padding: const EdgeInsets.all(12),
-            color: Colors.orange.shade50,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _summaryItem(
-                  "Today's Sales",
-                  "₱${summary['total']!.toStringAsFixed(0)}",
-                  Colors.orange,
-                ),
-                _summaryItem(
-                  "Cash",
-                  "₱${summary['cash']!.toStringAsFixed(0)}",
-                  Colors.green,
-                ),
-                _summaryItem(
-                  "Utang",
-                  "₱${summary['utang']!.toStringAsFixed(0)}",
-                  Colors.red,
-                ),
-              ],
+          Card(
+            margin: const EdgeInsets.all(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _summaryItem(
+                    "Today's Sales",
+                    "₱${summary['total']!.toStringAsFixed(0)}",
+                    Colors.green,
+                  ),
+                  _summaryItem(
+                    "Cash",
+                    "₱${summary['cash']!.toStringAsFixed(0)}",
+                    Colors.green.shade700,
+                  ),
+                  _summaryItem(
+                    "Utang",
+                    "₱${summary['utang']!.toStringAsFixed(0)}",
+                    Colors.red,
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -484,7 +495,7 @@ class _SalesScreenState extends State<SalesScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10),
-            color: Colors.orange.shade100,
+            color: Colors.green.shade50,
             child: Center(
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.add_circle),
@@ -495,44 +506,66 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
           Expanded(
             flex: 4,
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: cartItems.length,
-                    itemBuilder: (c, i) => ListTile(
-                      title: Text(
-                        "${cartItems[i]['name']} x${cartItems[i]['qty']}",
-                      ),
-                      trailing: Text(
-                        "₱${(cartItems[i]['price'] * cartItems[i]['qty']).toStringAsFixed(2)}",
-                      ),
-                      onLongPress: () => setState(() => cartItems.removeAt(i)),
+            child: cartItems.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.shopping_cart_outlined,
+                          size: 80,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          "Your cart is empty",
+                          style: TextStyle(fontSize: 18),
+                        ),
+                        Text(
+                          "Scan products to start selling",
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  )
+                : Column(
                     children: [
-                      Text(
-                        "Total: ₱${total.toStringAsFixed(2)}",
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: cartItems.length,
+                          itemBuilder: (c, i) => ListTile(
+                            title: Text(
+                              "${cartItems[i]['name']} x${cartItems[i]['qty']}",
+                            ),
+                            trailing: Text(
+                              "₱${((cartItems[i]['price'] as num) * (cartItems[i]['qty'] as int)).toStringAsFixed(2)}",
+                            ),
+                            onLongPress: () =>
+                                setState(() => cartItems.removeAt(i)),
+                          ),
                         ),
                       ),
-                      if (cartItems.isNotEmpty)
-                        ElevatedButton(
-                          onPressed: () => _showCheckout(context),
-                          child: const Text("CHECKOUT"),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "Total: ₱${total.toStringAsFixed(2)}",
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => _showCheckout(context),
+                              child: const Text("CHECKOUT"),
+                            ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -542,11 +575,11 @@ class _SalesScreenState extends State<SalesScreen> {
   Widget _summaryItem(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
         Text(
           value,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 19,
             fontWeight: FontWeight.bold,
             color: color,
           ),
@@ -605,7 +638,7 @@ class _SalesScreenState extends State<SalesScreen> {
     String cust = "Walk-in";
     double total = cartItems.fold(
       0,
-      (sum, item) => sum + (item['price'] * item['qty']),
+      (sum, item) => sum + (item['price'] as num) * (item['qty'] as int),
     );
 
     showDialog(
@@ -639,7 +672,8 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 }
 
-// --- INVENTORY SCREEN WITH LOW STOCK + SEARCH ---
+// --- INVENTORY SCREEN ---
+// FIX #5: MobileScannerController stored in state so it can be properly disposed
 class InventoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> products;
   final Function(Map<String, dynamic>) onAdd;
@@ -656,17 +690,35 @@ class InventoryScreen extends StatefulWidget {
 
 class _InventoryScreenState extends State<InventoryScreen> {
   String searchQuery = "";
-  final MobileScannerController addController = MobileScannerController();
+  String? selectedCategory;
+  MobileScannerController? _scanController;
+
+  final List<String> allCategories = [
+    "All",
+    "Snacks",
+    "Drinks",
+    "Canned Goods",
+    "Household",
+    "Others",
+  ];
 
   List<Map<String, dynamic>> get filteredProducts {
-    if (searchQuery.isEmpty) return widget.products;
-    return widget.products
-        .where(
-          (p) => p['name'].toString().toLowerCase().contains(
-            searchQuery.toLowerCase(),
-          ),
-        )
-        .toList();
+    var list = widget.products;
+    if (searchQuery.isNotEmpty) {
+      list = list
+          .where(
+            (p) => p['name'].toString().toLowerCase().contains(
+              searchQuery.toLowerCase(),
+            ),
+          )
+          .toList();
+    }
+    if (selectedCategory != null && selectedCategory != "All") {
+      list = list
+          .where((p) => (p['category'] ?? "Others") == selectedCategory)
+          .toList();
+    }
+    return list;
   }
 
   void _showAddDialog() {
@@ -674,12 +726,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
     double price = 0;
     int stock = 0;
     String barcode = "";
+    String category = "Snacks";
+
+    // FIX #5: create and track a single controller for this dialog session
+    _scanController = MobileScannerController();
 
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, setS) => AlertDialog(
-          title: const Text("Add Product"),
+          title: const Text("Add New Product"),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -687,20 +743,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 SizedBox(
                   height: 120,
                   child: MobileScanner(
-                    controller: addController,
+                    controller: _scanController!,
                     onDetect: (cap) =>
                         setS(() => barcode = cap.barcodes.first.rawValue ?? ""),
                   ),
                 ),
-                Text(
-                  "Barcode: ${barcode.isEmpty ? 'Waiting...' : barcode}",
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
+                Text("Barcode: ${barcode.isEmpty ? 'Waiting...' : barcode}"),
                 TextField(
-                  decoration: const InputDecoration(labelText: "Name"),
+                  decoration: const InputDecoration(labelText: "Product Name"),
                   onChanged: (v) => name = v,
                 ),
                 TextField(
@@ -709,9 +759,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   onChanged: (v) => price = double.tryParse(v) ?? 0,
                 ),
                 TextField(
-                  decoration: const InputDecoration(labelText: "Stock"),
+                  decoration: const InputDecoration(labelText: "Initial Stock"),
                   keyboardType: TextInputType.number,
                   onChanged: (v) => stock = int.tryParse(v) ?? 0,
+                ),
+                DropdownButtonFormField<String>(
+                  value: category,
+                  decoration: const InputDecoration(labelText: "Category"),
+                  items:
+                      [
+                            "Snacks",
+                            "Drinks",
+                            "Canned Goods",
+                            "Household",
+                            "Others",
+                          ]
+                          .map(
+                            (c) => DropdownMenuItem(value: c, child: Text(c)),
+                          )
+                          .toList(),
+                  onChanged: (v) => setS(() => category = v!),
                 ),
               ],
             ),
@@ -719,68 +786,119 @@ class _InventoryScreenState extends State<InventoryScreen> {
           actions: [
             ElevatedButton(
               onPressed: () {
+                if (name.isEmpty) return;
                 String finalBarcode = barcode.isEmpty
-                    ? "MANUAL-${name.toLowerCase()}"
+                    ? "MANUAL-${DateTime.now().millisecondsSinceEpoch}"
                     : barcode;
                 widget.onAdd({
                   'barcode': finalBarcode,
                   'name': name,
                   'price': price,
                   'stock': stock,
+                  'category': category,
                 });
+                _scanController?.dispose();
+                _scanController = null;
                 Navigator.pop(c);
               },
-              child: const Text("SAVE"),
+              child: const Text("SAVE PRODUCT"),
             ),
           ],
         ),
       ),
-    );
+    ).then((_) {
+      // FIX #5: also dispose if dialog is dismissed without saving
+      _scanController?.dispose();
+      _scanController = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Stock Management"),
-        backgroundColor: Colors.orange,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              onChanged: (value) => setState(() => searchQuery = value),
-              decoration: InputDecoration(
-                hintText: "Search products...",
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+      appBar: AppBar(title: const Text("Stock Management")),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onChanged: (v) => setState(() => searchQuery = v),
+                    decoration: InputDecoration(
+                      hintText: "Search products...",
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: selectedCategory ?? "All",
+                  items: allCategories
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => selectedCategory = v),
+                ),
+              ],
             ),
           ),
-        ),
-      ),
-      body: ListView.builder(
-        itemCount: filteredProducts.length,
-        itemBuilder: (c, i) {
-          final p = filteredProducts[i];
-          final isLow = (p['stock'] as num) <= 5;
-          return ListTile(
-            tileColor: isLow ? Colors.orange.shade50 : null,
-            title: Text(p['name']),
-            subtitle: Text(
-              "Stock: ${p['stock']}${isLow ? '  ← Low Stock!' : ''}",
-              style: TextStyle(color: isLow ? Colors.red : null),
+          if (filteredProducts.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 90,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 16),
+                    Text("No products yet", style: TextStyle(fontSize: 20)),
+                    Text(
+                      "Tap + to add your first item",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.builder(
+                itemCount: filteredProducts.length,
+                itemBuilder: (c, i) {
+                  final p = filteredProducts[i];
+                  final isLow = (p['stock'] as num) <= 5;
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        p['name'],
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        "${p['category'] ?? 'Others'} • Stock: ${p['stock']}${isLow ? ' ⚠ Low Stock' : ''}",
+                      ),
+                      trailing: Text(
+                        "₱${p['price']}",
+                        style: TextStyle(
+                          color: isLow ? Colors.red : Colors.green,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-            trailing: Text(
-              "₱${p['price']}",
-              style: TextStyle(color: isLow ? Colors.red : null),
-            ),
-          );
-        },
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
@@ -790,7 +908,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 }
 
-// --- ACCOUNTING SCREEN (unchanged) ---
+// --- ACCOUNTING SCREEN ---
 class AccountingScreen extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
   final Function(String, double, double, {bool isMemo}) onAdd;
@@ -846,10 +964,11 @@ class AccountingScreen extends StatelessWidget {
                 children: [
                   pw.Expanded(flex: 1, child: pw.Text(e['day'])),
                   pw.Expanded(flex: 3, child: pw.Text(e['ref'])),
+                  // FIX #2: show real credit amount in parens for memo rows
                   pw.Expanded(
                     flex: 2,
                     child: pw.Text(
-                      isMemo ? "(${e['credit']})" : "P${e['credit']}",
+                      isMemo ? "(P${e['credit']})" : "P${e['credit']}",
                     ),
                   ),
                   pw.Expanded(
@@ -874,6 +993,7 @@ class AccountingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final filtered = entries.where((e) => e['month'] == selectedMonth).toList();
 
+    // FIX #2: memo entries (UTANG) skipped in balance calculation
     double getBal(int i) {
       double b = 0;
       for (int j = filtered.length - 1; j >= i; j--) {
@@ -886,11 +1006,10 @@ class AccountingScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.orange,
         title: DropdownButtonHideUnderline(
           child: DropdownButton<String>(
             value: selectedMonth,
-            dropdownColor: Colors.orange,
+            dropdownColor: Colors.green,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -904,7 +1023,6 @@ class AccountingScreen extends StatelessWidget {
                 .toList(),
           ),
         ),
-        centerTitle: true,
       ),
       body: Column(
         children: [
@@ -948,6 +1066,7 @@ class AccountingScreen extends StatelessWidget {
                       Expanded(
                         flex: 2,
                         child: Text(
+                          // FIX #2: shows actual amount in parens for pending utang
                           isMemo
                               ? "(₱${entry['credit']})"
                               : "₱${entry['credit']}",
@@ -956,6 +1075,9 @@ class AccountingScreen extends StatelessWidget {
                                 ? Colors.orange.shade700
                                 : Colors.green,
                             fontSize: 12,
+                            fontStyle: isMemo
+                                ? FontStyle.italic
+                                : FontStyle.normal,
                           ),
                         ),
                       ),
@@ -995,7 +1117,7 @@ class AccountingScreen extends StatelessWidget {
               padding: const EdgeInsets.only(left: 30),
               child: FloatingActionButton(
                 heroTag: "p",
-                backgroundColor: Colors.orange.shade700,
+                backgroundColor: Colors.green.shade700,
                 onPressed: () => _printLedger(filtered, getBal),
                 child: const Icon(Icons.print),
               ),
@@ -1065,7 +1187,7 @@ class AccountingScreen extends StatelessWidget {
   }
 }
 
-// --- HISTORY SCREEN WITH SEARCH ---
+// --- HISTORY SCREEN ---
 class HistoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> history;
   final Function(int) onMarkPaid;
@@ -1094,12 +1216,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
         .toList();
   }
 
+  // FIX #3: confirmation dialog added to list-level "PAID?" button
+  void _confirmMarkPaid(
+    BuildContext context,
+    int realIndex,
+    Map<String, dynamic> sale,
+  ) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Mark as Paid"),
+        content: Text(
+          "Mark ₱${sale['total']} from ${sale['customer']} as paid?\n\nThis will log a [PAID] entry in the ledger.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text("CANCEL"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              widget.onMarkPaid(realIndex);
+              Navigator.pop(c);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Marked as paid & logged to ledger!"),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text("CONFIRM"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Sales History"),
-        backgroundColor: Colors.orange,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(50),
           child: Padding(
@@ -1109,55 +1270,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
               decoration: InputDecoration(
                 hintText: "Search customer...",
                 prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
           ),
         ),
       ),
-      body: ListView.builder(
-        itemCount: filteredHistory.length,
-        itemBuilder: (c, i) {
-          final sale = filteredHistory[i];
-          final isPaid = sale['paid'] == true;
-          return ListTile(
-            onTap: () => Navigator.push(
-              c,
-              MaterialPageRoute(
-                builder: (c) => ReceiptDetailScreen(
-                  sale: sale,
-                  saleIndex: widget.history.indexOf(
-                    sale,
-                  ), // use original index for marking paid
-                  onMarkPaid: widget.onMarkPaid,
-                ),
+      body: filteredHistory.isEmpty
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history_outlined, size: 80, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text("No sales recorded yet", style: TextStyle(fontSize: 18)),
+                ],
               ),
+            )
+          : ListView.builder(
+              itemCount: filteredHistory.length,
+              itemBuilder: (c, i) {
+                final sale = filteredHistory[i];
+                final isPaid = sale['paid'] == true;
+                final realIndex = widget.history.indexOf(sale);
+                return ListTile(
+                  onTap: () => Navigator.push(
+                    c,
+                    MaterialPageRoute(
+                      builder: (c) => ReceiptDetailScreen(
+                        sale: sale,
+                        saleIndex: realIndex,
+                        onMarkPaid: widget.onMarkPaid,
+                      ),
+                    ),
+                  ),
+                  leading: Icon(
+                    isPaid ? Icons.check_circle : Icons.warning_rounded,
+                    color: isPaid ? Colors.green : Colors.red,
+                  ),
+                  title: Text("${sale['customer']} - ₱${sale['total']}"),
+                  subtitle: Text("${sale['date']} • ${sale['type']}"),
+                  // FIX #3: now shows confirmation dialog before marking paid
+                  trailing: sale['type'] == "UTANG" && !isPaid
+                      ? TextButton(
+                          onPressed: () => _confirmMarkPaid(c, realIndex, sale),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.green,
+                          ),
+                          child: const Text("PAID?"),
+                        )
+                      : const Icon(Icons.arrow_forward_ios),
+                );
+              },
             ),
-            leading: Icon(
-              isPaid ? Icons.check_circle : Icons.warning_rounded,
-              color: isPaid ? Colors.green : Colors.red,
-            ),
-            title: Text("${sale['customer']} - ₱${sale['total']}"),
-            subtitle: Text("${sale['date']} • ${sale['type']}"),
-            trailing: sale['type'] == "UTANG" && !isPaid
-                ? TextButton(
-                    onPressed: () =>
-                        widget.onMarkPaid(widget.history.indexOf(sale)),
-                    child: const Text("PAID?"),
-                  )
-                : const Icon(Icons.arrow_forward_ios),
-          );
-        },
-      ),
     );
   }
 }
 
-// --- RECEIPT DETAIL ---
+// --- RECEIPT DETAIL SCREEN ---
 class ReceiptDetailScreen extends StatelessWidget {
   final Map<String, dynamic> sale;
   final int saleIndex;
@@ -1190,7 +1362,10 @@ class ReceiptDetailScreen extends StatelessWidget {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text("${it['name']} x${it['qty']}"),
-                  pw.Text("P${(it['price'] * it['qty'])}"),
+                  // FIX #7: explicit cast to num to avoid type mismatch crash
+                  pw.Text(
+                    "P${((it['price'] as num) * (it['qty'] as num)).toStringAsFixed(2)}",
+                  ),
                 ],
               ),
             ),
@@ -1206,6 +1381,43 @@ class ReceiptDetailScreen extends StatelessWidget {
     await Printing.layoutPdf(onLayout: (f) async => doc.save());
   }
 
+  // FIX #4: confirmation dialog added to receipt detail Mark as Paid button
+  void _confirmMarkPaid(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Mark as Paid"),
+        content: Text(
+          "Mark ₱${sale['total']} from ${sale['customer']} as paid?\n\nThis will log a [PAID] entry in the ledger.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text("CANCEL"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              onMarkPaid(saleIndex);
+              Navigator.pop(c);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Marked as paid & logged to ledger!"),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text("CONFIRM"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPaid = sale['paid'] == true;
@@ -1213,7 +1425,6 @@ class ReceiptDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Receipt"),
-        backgroundColor: Colors.orange,
         actions: [IconButton(icon: const Icon(Icons.print), onPressed: _print)],
       ),
       body: Padding(
@@ -1231,7 +1442,7 @@ class ReceiptDetailScreen extends StatelessWidget {
             Text("Customer: ${sale['customer']}"),
             Text("Date: ${sale['date']}"),
             Text(
-              "Status: ${isPaid ? 'PAID' : 'UNPAID'}",
+              "Status: ${isPaid ? 'PAID' : 'UNPAID (UTANG)'}",
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: isPaid ? Colors.green : Colors.red,
@@ -1246,7 +1457,8 @@ class ReceiptDetailScreen extends StatelessWidget {
                     "${sale['items'][i]['name']} x${sale['items'][i]['qty']}",
                   ),
                   trailing: Text(
-                    "₱${(sale['items'][i]['price'] * sale['items'][i]['qty']).toStringAsFixed(2)}",
+                    // FIX #7: explicit cast to num
+                    "₱${((sale['items'][i]['price'] as num) * (sale['items'][i]['qty'] as num)).toStringAsFixed(2)}",
                   ),
                 ),
               ),
@@ -1256,14 +1468,26 @@ class ReceiptDetailScreen extends StatelessWidget {
               "TOTAL: ₱${sale['total']}",
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            if (!isPaid)
-              ElevatedButton(
-                onPressed: () {
-                  onMarkPaid(saleIndex);
-                  Navigator.pop(context);
-                },
-                child: const Text("MARK AS PAID"),
+            // FIX #4: now shows confirmation dialog
+            if (!isPaid) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text(
+                    "MARK AS PAID",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () => _confirmMarkPaid(context),
+                ),
               ),
+            ],
           ],
         ),
       ),
@@ -1287,10 +1511,7 @@ class AboutDeveloperScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("The Developer"),
-        backgroundColor: Colors.orange,
-      ),
+      appBar: AppBar(title: const Text("The Developer")),
       body: SingleChildScrollView(
         child: Center(
           child: Padding(
@@ -1301,7 +1522,7 @@ class AboutDeveloperScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(
-                    color: Colors.orange,
+                    color: Colors.green,
                     shape: BoxShape.circle,
                   ),
                   child: const CircleAvatar(
@@ -1344,14 +1565,14 @@ class AboutDeveloperScreen extends StatelessWidget {
                   child: InkWell(
                     onTap: _launchPortfolio,
                     borderRadius: BorderRadius.circular(15),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
                         vertical: 15,
                         horizontal: 20,
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           Icon(Icons.language, color: Colors.blue),
                           SizedBox(width: 10),
                           Text(
