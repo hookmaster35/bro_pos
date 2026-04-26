@@ -75,10 +75,8 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Preload logo
     _precacheLogo();
 
-    // Navigate after splash
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
@@ -143,9 +141,7 @@ class _SplashScreenState extends State<SplashScreen>
                   },
                 ),
               ),
-
               const SizedBox(height: 40),
-
               FadeTransition(
                 opacity: _titleFade,
                 child: const Text(
@@ -158,9 +154,7 @@ class _SplashScreenState extends State<SplashScreen>
                   textAlign: TextAlign.center,
                 ),
               ),
-
               const SizedBox(height: 12),
-
               FadeTransition(
                 opacity: _subtitleFade,
                 child: const Text(
@@ -236,6 +230,26 @@ class _MainNavigationState extends State<MainNavigation> {
         jsonDecode(prefs.getString('ledger_db') ?? '[]'),
       );
     });
+  }
+
+  Map<String, double> getTodaySummary() {
+    final today = DateTime.now().toString().substring(0, 10);
+    double totalSales = 0;
+    double cashCollected = 0;
+    double pendingUtang = 0;
+
+    for (var sale in salesHistory) {
+      if (sale['date'].toString().startsWith(today)) {
+        final amt = (sale['total'] as num).toDouble();
+        totalSales += amt;
+        if (sale['type'] == "CASH" && sale['paid'] == true) {
+          cashCollected += amt;
+        } else if (sale['type'] == "UTANG" && sale['paid'] != true) {
+          pendingUtang += amt;
+        }
+      }
+    }
+    return {'total': totalSales, 'cash': cashCollected, 'utang': pendingUtang};
   }
 
   void addOrUpdateProduct(Map<String, dynamic> newProduct) {
@@ -320,7 +334,11 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      SalesScreen(inventory: allProducts, onCheckout: processSale),
+      SalesScreen(
+        inventory: allProducts,
+        onCheckout: processSale,
+        todaySummary: getTodaySummary(),
+      ),
       InventoryScreen(products: allProducts, onAdd: addOrUpdateProduct),
       AccountingScreen(
         entries: ledgerEntries,
@@ -358,15 +376,17 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- SALES SCREEN ---
+// --- SALES SCREEN WITH DAILY SUMMARY ---
 class SalesScreen extends StatefulWidget {
   final List<Map<String, dynamic>> inventory;
   final Function(List<Map<String, dynamic>>, double, String, String) onCheckout;
+  final Map<String, double> todaySummary;
 
   const SalesScreen({
     super.key,
     required this.inventory,
     required this.onCheckout,
+    required this.todaySummary,
   });
 
   @override
@@ -416,6 +436,7 @@ class _SalesScreenState extends State<SalesScreen> {
       0,
       (sum, item) => sum + (item['price'] * item['qty']),
     );
+    final summary = widget.todaySummary;
 
     return Scaffold(
       appBar: AppBar(
@@ -424,6 +445,31 @@ class _SalesScreenState extends State<SalesScreen> {
       ),
       body: Column(
         children: [
+          // Daily Summary
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.orange.shade50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _summaryItem(
+                  "Today's Sales",
+                  "₱${summary['total']!.toStringAsFixed(0)}",
+                  Colors.orange,
+                ),
+                _summaryItem(
+                  "Cash",
+                  "₱${summary['cash']!.toStringAsFixed(0)}",
+                  Colors.green,
+                ),
+                _summaryItem(
+                  "Utang",
+                  "₱${summary['utang']!.toStringAsFixed(0)}",
+                  Colors.red,
+                ),
+              ],
+            ),
+          ),
           Expanded(
             flex: 3,
             child: MobileScanner(
@@ -490,6 +536,22 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _summaryItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 
@@ -577,7 +639,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 }
 
-// --- INVENTORY SCREEN ---
+// --- INVENTORY SCREEN WITH LOW STOCK + SEARCH ---
 class InventoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> products;
   final Function(Map<String, dynamic>) onAdd;
@@ -593,7 +655,19 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
+  String searchQuery = "";
   final MobileScannerController addController = MobileScannerController();
+
+  List<Map<String, dynamic>> get filteredProducts {
+    if (searchQuery.isEmpty) return widget.products;
+    return widget.products
+        .where(
+          (p) => p['name'].toString().toLowerCase().contains(
+            searchQuery.toLowerCase(),
+          ),
+        )
+        .toList();
+  }
 
   void _showAddDialog() {
     String name = "";
@@ -665,27 +739,58 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text("Stock Management"),
-      backgroundColor: Colors.orange,
-    ),
-    body: ListView.builder(
-      itemCount: widget.products.length,
-      itemBuilder: (c, i) => ListTile(
-        title: Text(widget.products[i]['name']),
-        subtitle: Text("Stock: ${widget.products[i]['stock']}"),
-        trailing: Text("₱${widget.products[i]['price']}"),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Stock Management"),
+        backgroundColor: Colors.orange,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(50),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              onChanged: (value) => setState(() => searchQuery = value),
+              decoration: InputDecoration(
+                hintText: "Search products...",
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
-    ),
-    floatingActionButton: FloatingActionButton(
-      onPressed: _showAddDialog,
-      child: const Icon(Icons.add),
-    ),
-  );
+      body: ListView.builder(
+        itemCount: filteredProducts.length,
+        itemBuilder: (c, i) {
+          final p = filteredProducts[i];
+          final isLow = (p['stock'] as num) <= 5;
+          return ListTile(
+            tileColor: isLow ? Colors.orange.shade50 : null,
+            title: Text(p['name']),
+            subtitle: Text(
+              "Stock: ${p['stock']}${isLow ? '  ← Low Stock!' : ''}",
+              style: TextStyle(color: isLow ? Colors.red : null),
+            ),
+            trailing: Text(
+              "₱${p['price']}",
+              style: TextStyle(color: isLow ? Colors.red : null),
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddDialog,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
 }
 
-// --- ACCOUNTING SCREEN ---
+// --- ACCOUNTING SCREEN (unchanged) ---
 class AccountingScreen extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
   final Function(String, double, double, {bool isMemo}) onAdd;
@@ -960,8 +1065,8 @@ class AccountingScreen extends StatelessWidget {
   }
 }
 
-// --- HISTORY SCREEN ---
-class HistoryScreen extends StatelessWidget {
+// --- HISTORY SCREEN WITH SEARCH ---
+class HistoryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> history;
   final Function(int) onMarkPaid;
 
@@ -972,43 +1077,84 @@ class HistoryScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text("Sales History"),
-      backgroundColor: Colors.orange,
-    ),
-    body: ListView.builder(
-      itemCount: history.length,
-      itemBuilder: (c, i) {
-        final sale = history[i];
-        final isPaid = sale['paid'] == true;
-        return ListTile(
-          onTap: () => Navigator.push(
-            c,
-            MaterialPageRoute(
-              builder: (c) => ReceiptDetailScreen(
-                sale: sale,
-                saleIndex: i,
-                onMarkPaid: onMarkPaid,
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  String searchQuery = "";
+
+  List<Map<String, dynamic>> get filteredHistory {
+    if (searchQuery.isEmpty) return widget.history;
+    return widget.history
+        .where(
+          (s) => s['customer'].toString().toLowerCase().contains(
+            searchQuery.toLowerCase(),
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Sales History"),
+        backgroundColor: Colors.orange,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(50),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              onChanged: (v) => setState(() => searchQuery = v),
+              decoration: InputDecoration(
+                hintText: "Search customer...",
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ),
-          leading: Icon(
-            isPaid ? Icons.check_circle : Icons.warning_rounded,
-            color: isPaid ? Colors.green : Colors.red,
-          ),
-          title: Text("${sale['customer']} - ₱${sale['total']}"),
-          subtitle: Text("${sale['date']} • ${sale['type']}"),
-          trailing: sale['type'] == "UTANG" && !isPaid
-              ? TextButton(
-                  onPressed: () => onMarkPaid(i),
-                  child: const Text("PAID?"),
-                )
-              : const Icon(Icons.arrow_forward_ios),
-        );
-      },
-    ),
-  );
+        ),
+      ),
+      body: ListView.builder(
+        itemCount: filteredHistory.length,
+        itemBuilder: (c, i) {
+          final sale = filteredHistory[i];
+          final isPaid = sale['paid'] == true;
+          return ListTile(
+            onTap: () => Navigator.push(
+              c,
+              MaterialPageRoute(
+                builder: (c) => ReceiptDetailScreen(
+                  sale: sale,
+                  saleIndex: widget.history.indexOf(
+                    sale,
+                  ), // use original index for marking paid
+                  onMarkPaid: widget.onMarkPaid,
+                ),
+              ),
+            ),
+            leading: Icon(
+              isPaid ? Icons.check_circle : Icons.warning_rounded,
+              color: isPaid ? Colors.green : Colors.red,
+            ),
+            title: Text("${sale['customer']} - ₱${sale['total']}"),
+            subtitle: Text("${sale['date']} • ${sale['type']}"),
+            trailing: sale['type'] == "UTANG" && !isPaid
+                ? TextButton(
+                    onPressed: () =>
+                        widget.onMarkPaid(widget.history.indexOf(sale)),
+                    child: const Text("PAID?"),
+                  )
+                : const Icon(Icons.arrow_forward_ios),
+          );
+        },
+      ),
+    );
+  }
 }
 
 // --- RECEIPT DETAIL ---
