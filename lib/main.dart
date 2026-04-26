@@ -28,7 +28,7 @@ class BroPOS extends StatelessWidget {
   }
 }
 
-// --- ENHANCED SPLASH SCREEN ---
+// --- SPLASH SCREEN WITH STAGGERED FADE EFFECT ---
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -39,22 +39,47 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
+  late Animation<double> _logoFade;
+  late Animation<double> _titleFade;
+  late Animation<double> _subtitleFade;
 
   @override
   void initState() {
     super.initState();
 
-    // Fade-in animation for the logo/text
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1800),
     );
-    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+
+    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
+    );
+
+    _titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
+      ),
+    );
+
+    _subtitleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
     _controller.forward();
 
-    // Navigate after 1 second total
-    Future.delayed(const Duration(seconds: 1), () {
+    // Preload logo
+    _precacheLogo();
+
+    // Navigate after splash
+    Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -63,14 +88,21 @@ class _SplashScreenState extends State<SplashScreen>
                 const MainNavigation(),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
-                  // Smooth fade transition between screens
                   return FadeTransition(opacity: animation, child: child);
                 },
-            transitionDuration: const Duration(milliseconds: 400),
+            transitionDuration: const Duration(milliseconds: 600),
           ),
         );
       }
     });
+  }
+
+  Future<void> _precacheLogo() async {
+    try {
+      await precacheImage(const AssetImage('assets/logo.png'), context);
+    } catch (e) {
+      debugPrint("Logo preload failed: $e");
+    }
   }
 
   @override
@@ -83,36 +115,62 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Center(
+      body: Center(
+        child: SingleChildScrollView(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/logo.png',
-                width: 150,
-                height: 150,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.storefront,
-                  size: 80,
-                  color: Colors.orange,
+              FadeTransition(
+                opacity: _logoFade,
+                child: Image.asset(
+                  'assets/logo.png',
+                  width: 160,
+                  height: 160,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 160,
+                      height: 160,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.storefront,
+                        size: 90,
+                        color: Colors.orange,
+                      ),
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 32),
-              const Text(
-                "Welcome to HandyPOS!",
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange,
+
+              const SizedBox(height: 40),
+
+              FadeTransition(
+                opacity: _titleFade,
+                child: const Text(
+                  "Welcome to HandyPOS!",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                "By hookmaster35",
-                style: TextStyle(fontSize: 14, color: Colors.grey),
+
+              const SizedBox(height: 12),
+
+              FadeTransition(
+                opacity: _subtitleFade,
+                child: const Text(
+                  "By hookmaster35",
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ],
           ),
